@@ -1,0 +1,147 @@
+
+:gfxinit ;Initialize the Grey Jay libraries. Call this before using ANY
+        ;other Grey Jay function.
+        ;     Input: A = Graphics mode (in range 0-2).
+        ;            B = Address to the start of the frame buffer. Graphics
+        ;                mode 0 and 1 require 386 words, and mode 2
+        ;                requires 772 words. _Everything_ between the
+        ;                address and those offsets will be overwritten.
+        ;            C = Address to the start of the font buffer. Graphics
+        ;                mode 0 ignores this register, while both mode 1
+        ;                and 2 require 256 words. Again, _everything_ 
+        ;                between the address and that offset will be
+        ;                overwritten.
+    
+set [gfxmode], A
+
+set PUSH, A ;Push registers
+set PUSH, B
+set PUSH, X
+set PUSH, Y
+set PUSH, I
+set PUSH, J
+set PUSH, A
+set PUSH, B
+
+hwn I ;Get LEM1802/1801
+hwq I
+ifn A, 0xF615
+ifn B, 0x7349
+sub I, 1
+sub PC, 5
+set [lem180x], I
+
+set B, POP ;Initialize screen buffer
+set [buffer0], B
+set I, B
+add I, 385
+set A, POP
+ife A, 0
+add PC, 5
+add I, 1
+set [buffer1], I
+add I, 385
+
+xor [I], [I] ;Clear screen buffer(s)
+sub I, 1
+ifn I, B
+sub PC, 4
+xor [I], [I]
+
+set [bswitch], 0 ;Set buffer switch, and exit if graphics mode is 0
+ife A, 0
+set PC, gfxinitend
+
+set I, C ;Initialize the pixel-based font
+xor J, J
+
+sti A, J
+shl A, 8
+bor A, 0x00FF
+set [I], J
+and [I], A
+
+add I, 1
+set A, J
+shr A, 8
+bor A, 0xFF00
+set [I], J
+and [I], A
+
+ifn J, 127
+sub PC, 0x10
+
+set [fontbuffer], C
+
+set A, 1
+set B, fontbuffer
+hwi [lem180x]
+
+xor A, A
+set B, buffer0
+hwi [lem180x]
+
+:gfxinitend
+set J, POP
+set I, POP
+set Y, POP
+set X, POP
+set B, POP
+set A, POP
+
+set PC, POP
+
+
+
+:pixwrite;Writes a pixel at screen coordinate X*Y (this is not intended for
+        ;mass-writing so calm down with it)
+        ;     Input: C = 16-bit signed boolean value. Negative and zero    
+        ;                values are false, and positive true. Represents
+        ;                color.
+        ;            X = X-coordinate (horizontal) of pixel to write to.
+        ;            Y = Y-coordinate (vertical) of pixel to write to.
+
+set PUSH, A
+set PUSH, B
+set PUSH, X
+set PUSH, Y 
+        
+set A, Y
+div X, 2
+div A, 4
+mul X, 0x20
+add A, X
+add A, [buffer0]
+div X, 2
+
+mod X, 2
+mul X, 4 ;shl X, 2
+
+mod Y, 4
+add Y, X ;bor Y, X
+
+set B, 1
+shl B, Y
+
+ifu C, 1
+set PC, pixwritesub
+
+ifb [A], B
+set PC, pixwriteend
+add [A], B
+ifb [A], 0x0080
+xor [A], -1
+set PC, pixwriteend
+
+:pixwritesub
+ifc [A], B
+set PC, pixwriteend
+sub [A], B
+ifc [A], 0x0800
+xor [A], 0xF7FF
+
+:pixwriteend
+set Y, POP
+set X, POP
+set B, POP
+set A, POP
